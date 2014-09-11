@@ -14,12 +14,12 @@ defined('ABSPATH') or die("No script kiddies please!");
 define( 'AADSSO_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'AADSSO_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 
-define( 'AADSSO_SETTINGS_PATH', AADSSO_PLUGIN_DIR . '/Settings.json' );
+define( 'AADSSO_SETTINGS_PATH', AADSSO_PLUGIN_DIR . 'Settings.json' );
 
-require_once AADSSO_PLUGIN_DIR . '/Settings.php';
-require_once AADSSO_PLUGIN_DIR . '/AuthorizationHelper.php';
-require_once AADSSO_PLUGIN_DIR . '/GraphHelper.php';
-require_once AADSSO_PLUGIN_DIR . '/JWT.php';
+require_once AADSSO_PLUGIN_DIR . 'Settings.php';
+require_once AADSSO_PLUGIN_DIR . 'AuthorizationHelper.php';
+require_once AADSSO_PLUGIN_DIR . 'GraphHelper.php';
+require_once AADSSO_PLUGIN_DIR . 'JWT.php';
 
 class AADSSO {
 
@@ -28,8 +28,8 @@ class AADSSO {
 	private $settings = NULL;
 	const ANTIFORGERY_ID_KEY = 'antiforgery-id';
 
-	public function __construct( $settings ) {
-		$this->settings = $settings;
+	public function __construct() {
+		$this->settings = AADSSO_Settings::loadSettings();
 
 		// Set the redirect urls
 		$this->settings->redirect_uri = wp_login_url();
@@ -41,7 +41,7 @@ class AADSSO {
 		// The authenticate filter
 		add_filter( 'authenticate', array( $this, 'authenticate' ), 1, 3 );
 
-		// Some debugging locations 
+		// Some debugging locations
 		//add_action( 'admin_notices', array( $this, 'printDebug' ) );
 		//add_action( 'login_footer', array( $this, 'printDebug' ) );
 
@@ -55,13 +55,13 @@ class AADSSO {
 		add_action( 'wp_logout', array( $this, 'clearSession' ) );
 	}
 
-	public static function getInstance( $settings ) {
+	public static function getInstance() {
 		if ( ! self::$instance ) {
-			self::$instance = new self( $settings );
+			self::$instance = new self();
 		}
 		return self::$instance;
 	}
-	
+
 	function register_session() {
 		if ( ! session_id() ) {
 			session_start();
@@ -89,7 +89,7 @@ class AADSSO {
 					return new WP_Error( 'invalid_id_token' , sprintf( 'ERROR: Invalid id_token. %s', $e->getMessage() ) );
 				}
 
-				// Try to find an existing user in WP where the UPN of the currect AAD user is 
+				// Try to find an existing user in WP where the UPN of the currect AAD user is
 				// (depending on config) the 'login' or 'email' field
 				$user = get_user_by( $this->settings->field_to_match_to_upn, $jwt->upn );
 
@@ -129,7 +129,7 @@ class AADSSO {
 		$group_ids = array_keys( $this->settings->aad_group_to_wp_role_map );
 		$group_memberships = AADSSO_GraphHelper::userCheckMemberGroups( $aad_object_id, $group_ids );
 
-		// Determine which WordPress role the AAD group corresponds to. 
+		// Determine which WordPress role the AAD group corresponds to.
 		// TODO: Check for error in the group membership response
 		$role_to_set = $this->settings->default_wp_role;
 		if ( ! empty($group_memberships->value ) ) {
@@ -154,7 +154,7 @@ class AADSSO {
 	}
 
 	function getLoginUrl() {
-		$antiforgery_id = com_create_guid ();
+		$antiforgery_id = com_create_guid();
 		$_SESSION[ self::ANTIFORGERY_ID_KEY ] = $antiforgery_id;
 		return AADSSO_AuthorizationHelper::getAuthorizationURL( $this->settings, $antiforgery_id );
 	}
@@ -169,8 +169,8 @@ class AADSSO {
 		if ( isset( $_SESSION['aadsso_debug'] ) ) {
 			echo '<pre>'. print_r( $_SESSION['aadsso_var'], TRUE ) . '</pre>';
 		}
-		echo '<p>DEBUG</p><pre>' . print_r( $_SESSION, TRUE ) . '</pre>'; 
-		echo '<pre>' . print_r( $_GET, TRUE ) . '</pre>'; 
+		echo '<p>DEBUG</p><pre>' . print_r( $_SESSION, TRUE ) . '</pre>';
+		echo '<pre>' . print_r( $_GET, TRUE ) . '</pre>';
 	}
 
 	function printLoginCss() {
@@ -186,7 +186,24 @@ class AADSSO {
 EOF;
 		printf ( $html, $this->getLoginUrl(), htmlentities( $this->settings->org_display_name ), $this->getLogoutUrl() );
 	}
-}
+} // end class
 
-$settings = AADSSO_Settings::loadSettingsFromJSON(AADSSO_SETTINGS_PATH);
-$aadsso = AADSSO::getInstance($settings);
+$aadsso = AADSSO::getInstance();
+
+
+if ( ! function_exists( 'com_create_guid' ) ) {
+	function com_create_guid(){
+		mt_srand( (double) microtime() * 10000 ); //optional for php 4.2.0 and up.
+		$charid = strtoupper( md5( uniqid( rand(), true ) ) 	);
+		$hyphen = chr( 45 ); // "-"
+		$uuid = chr( 123 ) . // "{"
+			substr( $charid, 0, 8 ) . $hyphen .
+			substr( $charid, 8, 4 ) . $hyphen .
+			substr( $charid, 12, 4 ) . $hyphen .
+			substr( $charid, 16, 4 ) . $hyphen .
+			substr( $charid, 20, 12 ) .
+			chr( 125 ); // "}"
+
+		return $uuid;
+	}
+}
